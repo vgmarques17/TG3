@@ -35,6 +35,8 @@ int main(int argc, char **argv){
 	uint8_t ranges[8],MUX_door = TRUE, options; //armazena todos os intervalos de medição, porta onde está o MUX, opcoes de aquisicao
 	uint8_t channels = 0xff; // Canais a serem usados
 	
+	FILE *voltage_data;
+	char fname_data[100];
 
 	
 
@@ -93,7 +95,7 @@ int main(int argc, char **argv){
 	N_samples =  2*n_ciclos*samples_cicle; //número total de amostras
 	time_acq = N_samples/f_sampling;
 	n_loops = N_samples/samples_cicle; //Número de repetições das medições
-	printf("%d amostras serão coletadas\nTempo de amostragem: %.2f s\n",N_samples,time_acq);
+	printf("%d amostras serão coletadas para cada canal\nTempo de amostragem: %.2f s\n",N_samples,time_acq);
 	
 	usbAInScanStop_USB1608FS_Plus(udev); //Para qualquer scan que esteja ocorrendo
 	usbAInScanClearFIFO_USB1608FS_Plus(udev);// Limpa o endpoint do FIFO (ie. limpa a fila?)
@@ -121,9 +123,9 @@ int main(int argc, char **argv){
 		
 		/*Obs: näo coloquei pra parar pq no teste n tinha, mas pode ser necessário*/
 		
-		//3) Salva na matriz depois de converter pra volts (Ideal seria fazer isso só no fim)
-		for(i=0;i<samples_cicle;i++){
-			sdataOut[m*samples_cicle+i] = volts_USB1608FS_Plus(rint(sdataIn[i]*table_AIN[range][(uint8_t)col][0] 
+		//3) Salva na matriz depois de converter pra volts (Ideal seria fazer isso só no fim) ou multithread!
+		for(i=0;i<samples_cicle*NCHAN;i++){
+			sdataOut[m*samples_cicle*NCHAN+i] = volts_USB1608FS_Plus(rint(sdataIn[i]*table_AIN[range][(uint8_t)col][0] 
 																			 + table_AIN[range][(uint8_t)col][1])
 											,range); /*Ajusta valores de acordo com calibracao e converte para Volts*/
 			col++;
@@ -133,11 +135,11 @@ int main(int argc, char **argv){
 		MUX_door = !MUX_door;		
 	}
 	
-	/*Como armazenar os dados? Cada vez em uma tabela ou vai aumentando na mesma tabela?*/
+/*Como armazenar os dados? Cada vez em uma tabela ou vai aumentando na mesma tabela?*/
 	
 /*Espaço para demodulaçao*/
 
-/*Mostrar tabela (temporário)*/
+	/*Mostrar tabela (temporário)*/
 	col=0;
 	for(int row=0;row<NCHAN*samples_cicle;row++){
 		printf(" %f |",sdataOut[row]);
@@ -149,9 +151,27 @@ int main(int argc, char **argv){
 		
 	}
 
-/*Salvar em arquivo .txt (usar funçao)*/
+	/*Salvar em arquivo .txt (usar funçao)*/
+	printf("Deseja salvar? Y/N\n");
+	getchar();
+	if((check = getchar())=='Y'||check=='y'){
+		printf("Escolha um nome para o arquivo .txt:\n");
+		scanf("%123s",fname_data);
+		strcat(fname_data,".txt");
+		voltage_data = fopen(fname_data,"w");
+		
+		for(i=0;i<NCHAN;i++){
+			fprintf(voltage_data,"Channel_%d; ",i );		
+		}
+		for(int row=0;row<N_samples*NCHAN;row++){
+			fprintf(voltage_data," %lf ;",sdataOut[row]);
+		}
+		col++;
+		if(col==NCHAN){col = 0;}
+	}
 
 	return 0;
 }
+
 
 /*gcc -g -Wall -I. -o TG3_main TG3_main.c -L. -lmccusb  -lm -L/usr/local/lib -lhidapi-libusb -lusb-1.0 Library/mylib.o*/
