@@ -29,19 +29,19 @@ typedef struct {
 
 
 /*Extern functions*/
-extern float * getMatrixCol(int n_lines,int n_cols, float matrix[n_lines][n_cols], int col); //returns a column of file as an array
+extern float * getFileCol(int n_lines,int n_cols, float matrix[n_lines][n_cols], int col); //returns a column of file as an array
 
-extern void showTable_daq(float* table, int rows, int col); // Plots a table on the screen "1D" pointers
+extern void showTable_1Df(float* table, int rows, int col); // Plots a table on the screen "1D" pointers
 
-extern void showTable(float** table,int Nrows, int Ncol); //Plots a table on the screen, for "2D" pointers
+extern void showTable_2Df(float** table,int Nrows, int Ncol); //Plots a table on the screen, for "2D" pointers
 
-extern void saveData(float* Data, int rows, int col); // Save a table to a file, ';' separated, no header
+extern void saveData_1Df(float* Data, int rows, int col); // Save a table to a file, ';' separated, no header
 
 extern int pointer2gsl(gsl_matrix * gsl_M, float* M, int m, int n); //converter dados para matriz GSL
 
-extern int gsl2pointer(float* M, gsl_matrix* gsl_M);//converter matriz GSL para organizacao com pointers
+extern int gsl_matrix2pointer(float* M, gsl_matrix* gsl_M);//converter matriz GSL para organizacao com pointers
 
-int gsl2pointer_vector(float* M, gsl_vector* gsl_M); //converte vetor gsl para pointers
+int gsl_array2pointer(float* M, gsl_vector* gsl_M); //converte vetor gsl para pointers
 
 extern int transposeMatrix(float **usr_matrix, int Nrow,int Ncol, float **T_matrix); // transpose using pointers
 

@@ -5,28 +5,7 @@
 
 /*Extern Functions*/
 
-void showTable_daq(float* table, int Nrows, int Ncol){
-	int col=0;
-	for(int element=0;element<Nrows*Ncol;element++){
-		printf(" %f |",table[element]);
-		col++;	
-		if(col==Ncol){
-			printf("\n");
-			col=0;
-		}
-	}
-}
-
-void showTable(float** table,int Nrows, int Ncol){
-	for(int i=0;i<Nrows;i++){
-		for(int j=0;j<Ncol;j++){
-			printf("%f |", *((float *)table + (i * Ncol) + j));
-		}
-		printf("\n");
-	}
-}
-
-float *getMatrixCol(int n_lines,int n_cols, float matrix[n_lines][n_cols], int col){
+float *getFileCol(int n_lines,int n_cols, float matrix[n_lines][n_cols], int col){ //provisoria e errada
 	
 	if(col>=n_cols){
 		printf("Erro! Matriz possui apenas %d colunas. \n",n_cols);
@@ -41,12 +20,32 @@ float *getMatrixCol(int n_lines,int n_cols, float matrix[n_lines][n_cols], int c
 	return vector;
 }
 
-void saveData(float* Data, int Nrows, int Ncol){
+void showTable_1Df(float* table, int Nrows, int Ncol){
+	int col=0;
+	for(int element=0;element<Nrows*Ncol;element++){
+		printf(" %f |",table[element]);
+		col++;	
+		if(col==Ncol){
+			printf("\n");
+			col=0;
+		}
+	}
+}
+
+void showTable_2Df(float** table,int Nrows, int Ncol){
+	for(int i=0;i<Nrows;i++){
+		for(int j=0;j<Ncol;j++){
+			printf("%f |", *((float *)table + (i * Ncol) + j));
+		}
+		printf("\n");
+	}
+}
+
+void saveData_1Df(float* Data, int Nrows, int Ncol){
 	char check;
 	FILE *data_file;
 	char fname_data[100];
-	int col,i,element;
-	
+		
 	printf("Deseja salvar? Y/N\n");
 	getchar();
 	
@@ -56,14 +55,17 @@ void saveData(float* Data, int Nrows, int Ncol){
 		strcat(fname_data,".txt");
 		data_file = fopen(fname_data,"w");
 		
-		for(i=0;i<Ncol;i++){
+		for(int i=0;i<Ncol;i++){
 			fprintf(data_file,"Channel_%d; ",i );		
 		}
-		for(element=0;element<Nrows*Ncol;element++){
-			fprintf(data_file," %lf ;",Data[element]);
+		fprintf(data_file,"\n");
+		for(int row=0;row<Nrows;row++){
+			for(int col=0;col<Ncol;col++){
+				fprintf(data_file," %lf ;",Data[row*Ncol+col]);
+			}
+			fprintf(data_file,"\n");
 		}
-		col++;
-		if(col==Ncol){col = 0;}
+		
 		fclose(data_file);
 	}
 	
@@ -81,7 +83,7 @@ int pointer2gsl(gsl_matrix * gsl_M, float* M, int m, int n){
 	return 1;
 	}
 	
-int gsl2pointer(float* M, gsl_matrix* gsl_M){
+int gsl_matrix2pointer(float* M, gsl_matrix* gsl_M){
 	double element;
 	int m = gsl_M->size1, n = gsl_M->size2;
 	
@@ -95,7 +97,7 @@ int gsl2pointer(float* M, gsl_matrix* gsl_M){
 	return 1;
 	}
 	
-int gsl2pointer_vector(float* M, gsl_vector* gsl_M){
+int gsl_array2pointer(float* M, gsl_vector* gsl_M){
 	double element;
 	int m = gsl_M->size;
 
@@ -121,23 +123,6 @@ int transposeMatrix(float **usr_matrix, int Nrow,int Ncol, float **T_matrix){
 	
 }
 
-int productMatrix(float** A, int rA, int cA,float ** B,int rB, int cB,float** AB){
-	/*Allocate memory before using here*/
-	
-	if(cA!=rB){
-		printf("Number of columns in A is different from number of rows in B!\n");
-		return -1;
-	}
-	for(int i=0;i<rA;i++){ //percorre linhas de A e AB
-		for(int j=0;j<cB;j++){//percorre colunas de AB
-			for(int k=0;k<rB;k++){//percorre linhas de B
-				*((float*)AB + (i*cB) + j) += *((float*)A + (i*cA) + k) * *((float*)B + (k*cB) + j) ; 
-			}
-		}
-	}
-	return 1;
-}
-
 int gsl_productMatrix(gsl_matrix *A, gsl_matrix *B, gsl_matrix * AB){
 	double x;
 	
@@ -154,7 +139,7 @@ int gsl_productMatrix(gsl_matrix *A, gsl_matrix *B, gsl_matrix * AB){
 		}
 	}
 	return 1;
-	}
+}
 
 
 int pinv(gsl_matrix *usr_matrix,gsl_matrix *P_inv){
@@ -213,8 +198,9 @@ int pinv(gsl_matrix *usr_matrix,gsl_matrix *P_inv){
 	return 1;
 }
 
-
 fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
+	//!! Important: function is working currently for ONE channel; that should be solved soon
+	
 	/*Use GSL for all*/
 	
 	float Ts;
@@ -226,10 +212,10 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 	gsl_vector *amplitude,*phase_rad;
 	gsl_vector *phi_alpha,*phi_beta;
 	
-	gsl_matrix *gsl_Y;
+	gsl_matrix *gsl_Y;//, *ycos,*ysin;
 	float *Y; 
 	
-	float temp_val_1,temp_val_2;
+	float temp_val_1 = 0,temp_val_2 = 0;
 	gsl_vector *temp_vector_1,* temp_vector_2;
 	
 	int Nchan,N; //#elements
@@ -241,8 +227,8 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 	Nchan = Data->size2;
 	N = Data->size1; //size of data		
 	
-	time = gsl_vector_calloc(N); //alloc memory for arrays
-	omegat = gsl_vector_calloc(N);
+	time = gsl_vector_alloc(N); //alloc memory for arrays
+	omegat = gsl_vector_alloc(N);
 	
 	mat_j = gsl_matrix_alloc(N,3); 
 	mat_jI = gsl_matrix_alloc(3,N);
@@ -259,6 +245,9 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 	phi_beta = gsl_vector_alloc(Nchan);
 	
 	gsl_Y = gsl_matrix_alloc(N,Nchan);
+	//ysin = gsl_matrix_calloc(N,Nchan);
+	//ycos = gsl_matrix_calloc(N,Nchan);
+	
 	Y = malloc(N*Nchan*sizeof(float));
 	
 	//final results
@@ -272,15 +261,19 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 	
 	
 	//temporary
-	temp_vector_1 = gsl_vector_alloc(N);
-	temp_vector_2 = gsl_vector_alloc(N); //livrar vetores dps em todas as fun¢øes
+	temp_vector_1 = gsl_vector_alloc(Nchan);
+	temp_vector_2 = gsl_vector_alloc(Nchan); //livrar vetores dps em todas as fun¢øes
 	
 	//--------------------//
 	for(int i = 0; i<N;i++){gsl_vector_set(time,i,(double)i*Ts);} //creates time vector
 	
 	for(int i = 0; i<N;i++){gsl_vector_set(omegat,i,2*PI*f0*gsl_vector_get(time,i));}//create omega vector;
 	
-	/*Compute mat_J*/
+	for(int i= 0;i<N;i++){
+		
+	}
+	
+	/*Compute mat_J and inverse*/
 	for(int i=0;i<N;i++){
 		temp_val_1 = gsl_vector_get(omegat,i);
 		gsl_matrix_set(mat_j,i,0,(float)sin(temp_val_1)); //first column  = sines
@@ -310,14 +303,14 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 	phi_alpha = alpha;
 	gsl_vector_div(phi_alpha,amplitude);
 	
-	phi_alpha = beta;
+	phi_beta = beta;
 	gsl_vector_div(phi_beta,amplitude);
 	
 	for(int i = 0;i<Nchan;i++){
 		temp_val_1 = acos(gsl_vector_get(phi_alpha,i));
 		gsl_vector_set(phi_alpha,i,temp_val_1);
 		
-		temp_val_2 = acos(gsl_vector_get(phi_beta,i));
+		temp_val_2 = asin(gsl_vector_get(phi_beta,i));
 		gsl_vector_set(phi_beta,i,temp_val_2);	
 	}
 	
@@ -325,22 +318,23 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 	for(int i = 0;i<N;i++){
 		temp_vector_1 = alpha;
 		temp_vector_2 = beta;
+		
 		gsl_vector_scale(temp_vector_1,sin(2*PI*f0*gsl_vector_get(time,i)));
 		gsl_vector_scale(temp_vector_2,cos(2*PI*f0*gsl_vector_get(time,i)));
-		
+				
 		gsl_vector_add(temp_vector_1,temp_vector_2);
 		gsl_vector_add(temp_vector_1,C);
 		gsl_matrix_set_row(gsl_Y,i,temp_vector_1);				
 	}
 	
 	// Mandar para os resultados, rever necessidade de usar ponteiros no programa principal
-	gsl2pointer_vector(results.amplitude,amplitude);
-	gsl2pointer_vector(results.phase_rad,phase_rad);
-	gsl2pointer_vector(results.offset,C);
-	gsl2pointer_vector(results.alpha,alpha);
-	gsl2pointer_vector(results.beta,beta);
-	gsl2pointer_vector(results.omegat,omegat);
-	gsl2pointer(results.y,gsl_Y);
+	gsl_array2pointer(results.amplitude,amplitude);
+	gsl_array2pointer(results.phase_rad,phase_rad);
+	gsl_array2pointer(results.offset,C);
+	gsl_array2pointer(results.alpha,alpha);
+	gsl_array2pointer(results.beta,beta);
+	gsl_array2pointer(results.omegat,omegat);
+	gsl_matrix2pointer(results.y,gsl_Y);
 	
 	
 	return results;
@@ -349,10 +343,3 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
    ysin(k,:) = alpha.*sin(2*pi*f0*discrete_time(k));
    y(k,:) = ysin(k,:) + ycos(k,:) + C; 
  * */
-
-
-/* Nota para o futuro: se quiser passar uma matriz como parâmetro, 
- * utilizar as dimensoes como parâmetros ANTES dela, ou mandar como
- * ponteiro
- * 
- * APRENDER A USAR PONTEIROS DIREITO, ESSA BIBLIOTECA FUNCIONA SÓ COM TAMANHOS PRÉ DEFINIDOS DE MATRIZ*/

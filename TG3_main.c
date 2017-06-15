@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <ctype.h>
 #include <math.h>
+#include <libconfig.h>
 #include "../pmd.h"
 #include "../usb-1608FS-Plus.h"
 #include "Library/mylib.h"
@@ -13,7 +14,6 @@
 #define MAX_COUNT     (0xffff)
 #define FALSE 0
 #define TRUE 1
-#define NCHAN	8
 
 int main(int argc, char **argv){
 	
@@ -26,17 +26,21 @@ int main(int argc, char **argv){
 	float table_AIN[NGAINS_USB1608FS_PLUS][NCHAN_USB1608FS_PLUS][2]; //Tabela de calibraçao (ranges x canais x 2[inclinaçao e offset ])
 	
 	//Outras variáveis
-	float f_source, f_sampling,time_acq; //Frequência da fonte, frquência de amostragem, tempo de aquisição
-	char check; //variável para controle de loops
-	int n_ciclos,samples_cicle, N_samples,n_loops,range; /* # total de ciclos por direção, 
-												  *	# amostras por ciclo, # amostras total,
-												  * número de aquisições, intervalo de medição dos canais */
-	int i,m,col = 0; //controle de loops
+	config_t cfg_params;
+	config_setting_t *setting;
+	char cfg_file[100];
+	
+	double f_source, f_sampling,acq_time,T_s; //Frequência da fonte, frquência de amostragem, tempo de aquisição, periodo de aquisicao
+	
+	int samples_cicle, N_samples,n_loops,range, cicles_time,times_direction,N_chan; /* # amostras por ciclo, # amostras total,
+														* número de aquisições, #ciclos por dire¢ao, #numero de aplicacoes por direcao,
+														* Numero de canais */
+	int col = 0; //controle de loops
 	uint8_t ranges[8],MUX_door = TRUE, options; //armazena todos os intervalos de medição, porta onde está o MUX, opcoes de aquisicao
 	uint8_t channels = 0xff; // Canais a serem usados
 	
-	FILE *voltage_data;
-	char fname_data[100];
+	gsl_matrix *Data_Out;
+
 
 	
 
@@ -59,119 +63,141 @@ int main(int argc, char **argv){
 	usbDTristateW_USB1608FS_Plus(udev,0xfe); /*Configura quais portas digitais são
 											  *entradas ou saídas. 0 = saída, 1 = entrada
 											  *Ler como binário; Configuração do MUX*/
+											  
 	printf("\n-----------------MIOGRAFIA POR IMPEDÂNCIA ELÉTRICA----------------- \n\n ");
 	
 
-	/*Seleçao dos parâmetros da aquisiçao USAR ARQUIVO DE CONFIGURACAO*/ 
-	check = 'N';
-	do{
-		printf("Selecione a frequência da sua fonte (Hz):\n");
-		scanf("%f",&f_source);
-		printf("Selecione a frequência de amostragem (Hz):\n");
-		scanf("%f",&f_sampling);
-		/*printf("Por quantos segundos deseja realizar as medidas?\n");
-		scanf("%f",&time_acq);*/
-		printf("Qual o número total de ciclos da fonte que devem ser aplicados em cada direção?*\n");
-		scanf("%d",&n_ciclos);
-		
-		printf(" Frequência da fonte: %.2f Hz\n Frequência de amostragem: %.2f Hz\n Ciclos em cada direção: %d\n Prosseguir?(Y/N)\n",
-				f_source,f_sampling,n_ciclos);
-		getchar();
-		if((check = getchar())=='Y'||check=='y'){break;};
-		
-	}while(1);
-
-	printf("\nFazer medidas em qual intervalo de tensão?\n 0: +-10V\n 1: +- 5V\n 3: +-2V\n 5: +-1V\n");
-	scanf("%d",&range);
-	for(i=0;i<8;i++){
-		ranges[i] = range;
+	/*Parâmetros da aquisiçao USAR ARQUIVO DE CONFIGURACAO*/ 
+	
+	
+	config_init (&cfg_params);	
+	printf("Enter .cfg file name/path:\n");
+	scanf("%123s",cfg_file);
+	strcat(cfg_file,".cfg");
+	
+	/* Read the file. If there is an error, report it and exit. */
+	if(! config_read_file(&cfg_params, cfg_file))
+	{
+	fprintf(stderr, "%s:%d - %s\n", config_error_file(&cfg_params),
+			config_error_line(&cfg_params), config_error_text(&cfg_params));
+	config_destroy(&cfg_params);
+	return(EXIT_FAILURE);
 	}
+	
+	/*Decision Tree para determinar tipo de configura¢ao*/
+
+	if(config_lookup_float(&cfg_params,"f_sampling",&f_sampling)==0.0){
+		//Configura¢ao usando periodo
+		config_lookup_float(&cfg_params,"T_s",&T_s);
+		f_sampling = 1/T_s;
+
+	}else{
+		//Configura¢ao usando frequencia de amostragem
+		T_s = 1/f_sampling;
+	}
+	
+	config_lookup_float(&cfg_params,"f_source",&f_source); // frequencia da fonte
+		
+	if(config_lookup_float(&cfg_params,"acq_time",&acq_time) != 0){
+		
+		N_samples = acq_time*f_sampling;
+		config_lookup_int(&cfg_params,"cicles_time",&cicles_time); //Da erro se colocado direto no if
+		
+		if(cicles_time == 0){
+			//Configura¢æo com times_direction e acq_time
+			config_lookup_int(&cfg_params,"times_direction",&times_direction);
+			samples_cicle = (int)round(N_samples/times_direction);				
+			cicles_time = round(N_samples/(samples_cicle*2));
+		}else{
+			//Configura¢ao com cicles_time e acq_time
+			samples_cicle = round(N_samples/(cicles_time*2));
+			times_direction = round(N_samples/samples_cicle);
+		}
+	}else{
+		//Configura¢ao com cicles_time e times_direction
+		config_lookup_int(&cfg_params,"cicles_time",&cicles_time);
+		config_lookup_int(&cfg_params,"times_direction",&times_direction);
+		N_samples = times_direction*2*(cicles_time*f_sampling/f_source);
+		samples_cicle = round(N_samples/(cicles_time*2));
+		acq_time = N_samples*T_s;
+	}
+	/*colocar verifica¢øes para erros*/
+	
 
 	
+	printf("\n\nSumário da Aquisiçao \n----------------------\n\n");
 	
-
+	printf("Frequência de Amostragem [Hz]: %0.2f \n",f_sampling);
+	printf("Período de Amostragem [ms]: %0.2f \n",T_s*1000);
+	printf("Frequência da Fonte [Hz]: %0.2f \n",f_source);
+	printf("Número total de amostras: %i \n",N_samples);
+	printf("Ciclos da fonte para cada aplicacao em cada direcao: %i \n",cicles_time);
+	printf("Números de aplicacoes em cada direcao: %i \n",times_direction);
+	printf("Número de amostras coletadas em cada aplicacao: %i \n",samples_cicle);
+	printf("Tempo estimado de aquisicao [s]: %0.2f \n",acq_time);
+	
 	/*Preparaçao da aquisiçao*/
-	samples_cicle = round(f_sampling/f_source); //amostras por ciclo da fonte
-	N_samples =  2*n_ciclos*samples_cicle; //número total de amostras
-	time_acq = N_samples/f_sampling;
 	n_loops = N_samples/samples_cicle; //Número de repetições das medições
-	printf("%d amostras serão coletadas para cada canal\nTempo de amostragem: %.2f s\n",N_samples,time_acq);
+	config_lookup_int(&cfg_params,"range",&range);
+	config_lookup_int(&cfg_params,"N_chan",&N_chan);
+	for(int i =0;i<N_chan;i++){ranges[i] = range;}
 	
 	usbAInScanStop_USB1608FS_Plus(udev); //Para qualquer scan que esteja ocorrendo
 	usbAInScanClearFIFO_USB1608FS_Plus(udev);// Limpa o endpoint do FIFO (ie. limpa a fila?)
 	usbAInScanConfig_USB1608FS_Plus(udev, ranges);// Configura os ranges de cada canal
 	sleep(1);
-	
-	uint16_t sdataIn[NCHAN*samples_cicle]; //Reserva espaço para os dados de entrada
-	float sdataOut[NCHAN*N_samples]; // Reserva espaço para os dados de saída
+
+	uint16_t sdataIn[N_chan*samples_cicle]; //Reserva espaço para os dados de entrada
+	float sdataOut[N_chan*N_samples]; // Reserva espaço para os dados de saída
+	Data_Out = gsl_matrix_alloc(N_samples,N_chan); // Reserva espaço para os dados de saída em GSL
 	
 	//Configura o modo de transferência dos dados para o pc
 	if (f_sampling < 100.) {
-	  options = (IMMEDIATE_TRANSFER_MODE | INTERNAL_PACER_ON);
+	  options = (IMMEDIATE_TRANSFER_MODE | INTERNAL_PACER_ON); //problema nessa opcao
 	} else {
 	  options = (BLOCK_TRANSFER_MODE | INTERNAL_PACER_ON);
 	}
 	
 	/*Aquisiçao*/
-	
-	for(m=0;m<n_loops;m++){
+	printf("\nInício da Aquisiçao\n");
+	for(int m=0;m<n_loops;m++){
 		//1) Manda informaçao para a fonte com MUX
 		usbDLatchW_USB1608FS_Plus(udev, MUX_door);
 		//2) Coleta dados pelo tempo do frame
 		usbAInScanStart_USB1608FS_Plus(udev, samples_cicle, f_sampling, channels, options);
-		ret = usbAInScanRead_USB1608FS_Plus(udev, samples_cicle, NCHAN, sdataIn, options);
+		ret = usbAInScanRead_USB1608FS_Plus(udev, samples_cicle, N_chan, sdataIn, options);
 		
 		/*Obs: näo coloquei pra parar pq no teste n tinha, mas pode ser necessário*/
 		
-		//3) Salva na matriz depois de converter pra volts (Ideal seria fazer isso só no fim) ou multithread!
-		for(i=0;i<samples_cicle*NCHAN;i++){
-			sdataOut[m*samples_cicle*NCHAN+i] = volts_USB1608FS_Plus(rint(sdataIn[i]*table_AIN[range][(uint8_t)col][0] 
-																			 + table_AIN[range][(uint8_t)col][1])
-											,range); /*Ajusta valores de acordo com calibracao e converte para Volts*/
+		//3) Salva na matriz depois de converter pra volts (Ideal seria fazer isso só no fim) ou multithread! 
+				// Outra opcao seria só copiar a tabela para a tabela maior,e depois converter. Deve gastar menos tempo
+		for(int i = 0;i<samples_cicle*N_chan;i++){
+			sdataOut[m*samples_cicle*N_chan+i] = volts_USB1608FS_Plus(
+													rint(sdataIn[i]*table_AIN[range][(uint8_t)col][0] 
+													+ table_AIN[range][(uint8_t)col][1]),range
+												); /*Ajusta valores de acordo com calibracao e converte para Volts*/
 			col++;
-			if(col==NCHAN){col = 0;}
+			if(col==N_chan){col = 0;}
 		}
 		//4) Muda direção
 		MUX_door = !MUX_door;		
 	}
+
 	
-/*Como armazenar os dados? Cada vez em uma tabela ou vai aumentando na mesma tabela?*/
-	
-/*Espaço para demodulaçao*/
+	/*Espaço para demodulaçao*/
 
 	/*Mostrar tabela (temporário)*/
-	col=0;
-	for(int row=0;row<NCHAN*samples_cicle;row++){
-		printf(" %f |",sdataOut[row]);
-		col++;	
-		if(col==NCHAN){
-			printf("\n");
-			col=0;
-		}
-		
-	}
+	
+	showTable_1Df(sdataOut,samples_cicle,N_chan);
+	pointer2gsl(Data_Out,sdataOut,N_samples,N_chan);
 
 	/*Salvar em arquivo .txt (usar funçao)*/
-	printf("Deseja salvar? Y/N\n");
-	getchar();
-	if((check = getchar())=='Y'||check=='y'){
-		printf("Escolha um nome para o arquivo .txt:\n");
-		scanf("%123s",fname_data);
-		strcat(fname_data,".txt");
-		voltage_data = fopen(fname_data,"w");
-		
-		for(i=0;i<NCHAN;i++){
-			fprintf(voltage_data,"Channel_%d; ",i );		
-		}
-		for(int row=0;row<N_samples*NCHAN;row++){
-			fprintf(voltage_data," %lf ;",sdataOut[row]);
-		}
-		col++;
-		if(col==NCHAN){col = 0;}
-	}
+	saveData_1Df(sdataOut,N_samples,N_chan);
+	
+	config_destroy (&cfg_params);	
 
 	return 0;
 }
 
 
-/*gcc -g -Wall -I. -o TG3_main TG3_main.c -L. -lmccusb  -lm -L/usr/local/lib -lhidapi-libusb -lusb-1.0 Library/mylib.o*/
+/*gcc -g -Wall -I. -o TG3_main TG3_main.c -L. Library/mylib.o -lmccusb -L/usr/local/lib -lhidapi-libusb -lusb-1.0 -lm -lgsl -lgslcblas -lconfig */
