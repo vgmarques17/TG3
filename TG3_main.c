@@ -40,7 +40,7 @@ int main(int argc, char **argv){
 	uint8_t channels = 0xff; // Canais a serem usados
 	
 	gsl_matrix *Data_Out;
-
+	fitSine regression_output;
 
 	
 
@@ -185,11 +185,34 @@ int main(int argc, char **argv){
 
 	
 	/*Espaço para demodulaçao*/
+	pointer2gsl(Data_Out,sdataOut,N_samples,N_chan);
+	
+	/*gsl_matrix *data_cicle = gsl_matrix_alloc(samples_cicle,N_chan);
+	double value = 0;
+	for(int i = 0;i<samples_cicle;i++){
+		for(int j = 0;j<N_chan;j++){
+			value = gsl_matrix_get(Data_Out,i,j);
+			gsl_matrix_set(data_cicle,i,j,value);
+			}
+		}*/
+	
+	regression_output = sineRegression_lms(Data_Out,f_source,f_sampling);
+	
+	/*
+	printf("\nDados calculados [0]:\n");
+	printf("Amplitude: %f\n",gsl_vector_get(results.amplitude,0));
+	printf("Fase: %f\n",gsl_vector_get(results.phase_rad,0));
+	printf("offset: %f\n",gsl_vector_get(results.offset,0));
+	
+	printf("\nDados calculados [1]:\n");
+	printf("Amplitude: %f\n",gsl_vector_get(results.amplitude,1));
+	printf("Fase: %f\n",gsl_vector_get(results.phase_rad,1));
+	printf("offset: %f\n",gsl_vector_get(results.offset,1));*/
 
 	/*Mostrar tabela (temporário)*/
 	
-	showTable_1Df(sdataOut,samples_cicle,N_chan);
-	pointer2gsl(Data_Out,sdataOut,N_samples,N_chan);
+	//showTable_1Df(sdataOut,samples_cicle,N_chan);
+	
 
 	/*Salvar em arquivo .txt (usar funçao)*/
 	saveData_1Df(sdataOut,N_samples,N_chan);
