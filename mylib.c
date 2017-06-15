@@ -199,11 +199,9 @@ int pinv(gsl_matrix *usr_matrix,gsl_matrix *P_inv){
 }
 
 fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
-	//!! Important: function is working currently for ONE channel; that should be solved soon
-	
 	/*Use GSL for all*/
 	
-	float Ts;
+	float Ts = 1/samp_freq;
 	gsl_vector *time, *omegat; //time vector, angle vector(?)
 	gsl_vector *Sines,*Cosines;
 	gsl_vector *alpha,*beta,*C;
@@ -213,7 +211,6 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 	gsl_vector *phi_alpha,*phi_beta;
 	
 	gsl_matrix *gsl_Y;//, *ycos,*ysin;
-	float *Y; 
 	
 	float temp_val_1 = 0,temp_val_2 = 0;
 	gsl_vector *temp_vector_1,* temp_vector_2;
@@ -222,11 +219,9 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 	fitSine results;
 	
 	//Initialization
-	
-	Ts = 1/samp_freq;
+	N = Data->size1; //size of data	
 	Nchan = Data->size2;
-	N = Data->size1; //size of data		
-	
+			
 	time = gsl_vector_alloc(N); //alloc memory for arrays
 	omegat = gsl_vector_alloc(N);
 	
@@ -245,20 +240,6 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 	phi_beta = gsl_vector_alloc(Nchan);
 	
 	gsl_Y = gsl_matrix_alloc(N,Nchan);
-	//ysin = gsl_matrix_calloc(N,Nchan);
-	//ycos = gsl_matrix_calloc(N,Nchan);
-	
-	Y = malloc(N*Nchan*sizeof(float));
-	
-	//final results
-	results.amplitude = malloc((Nchan*sizeof(float)));
-	results.phase_rad = malloc((Nchan*sizeof(float)));
-	results.offset = malloc((Nchan*sizeof(float)));
-	results.alpha = malloc((Nchan*sizeof(float)));
-	results.beta = malloc((Nchan*sizeof(float)));
-	results.omegat = malloc((Nchan*sizeof(float)));
-	results.y = malloc((N*Nchan*sizeof(float)));
-	
 	
 	//temporary
 	temp_vector_1 = gsl_vector_alloc(Nchan);
@@ -267,11 +248,8 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 	//--------------------//
 	for(int i = 0; i<N;i++){gsl_vector_set(time,i,(double)i*Ts);} //creates time vector
 	
-	for(int i = 0; i<N;i++){gsl_vector_set(omegat,i,2*PI*f0*gsl_vector_get(time,i));}//create omega vector;
+	for(int i = 0; i<N;i++){gsl_vector_set(omegat,i,2*PI*f0*i*Ts);}//create omega vector;
 	
-	for(int i= 0;i<N;i++){
-		
-	}
 	
 	/*Compute mat_J and inverse*/
 	for(int i=0;i<N;i++){
@@ -280,6 +258,8 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 		gsl_matrix_set(mat_j,i,1,(float)cos(temp_val_1)); // second columns = cosines
 		gsl_matrix_set(mat_j,i,2,1.0);					 // third column = 1
 	}
+	
+
 
 	pinv(mat_j,mat_jI);
 	
@@ -289,6 +269,8 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 	gsl_matrix_get_row(alpha,vec_p, 0);
 	gsl_matrix_get_row(beta,vec_p, 1);
 	gsl_matrix_get_row(C,vec_p, 2);
+	
+
 
 	//amplitude e fase
 	for(int i = 0;i<Nchan;i++){
@@ -327,14 +309,15 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 		gsl_matrix_set_row(gsl_Y,i,temp_vector_1);				
 	}
 	
-	// Mandar para os resultados, rever necessidade de usar ponteiros no programa principal
-	gsl_array2pointer(results.amplitude,amplitude);
-	gsl_array2pointer(results.phase_rad,phase_rad);
-	gsl_array2pointer(results.offset,C);
-	gsl_array2pointer(results.alpha,alpha);
-	gsl_array2pointer(results.beta,beta);
-	gsl_array2pointer(results.omegat,omegat);
-	gsl_matrix2pointer(results.y,gsl_Y);
+	// Mandar para os resultados
+	results.amplitude = amplitude;
+	results.phase_rad = phase_rad;
+	results.offset = C;
+	results.alpha = alpha;
+	results.beta = beta;
+	results.omegat = omegat;
+	results.y = gsl_Y;
+
 	
 	
 	return results;
@@ -343,3 +326,11 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
    ysin(k,:) = alpha.*sin(2*pi*f0*discrete_time(k));
    y(k,:) = ysin(k,:) + ycos(k,:) + C; 
  * */
+/* 
+ for(int i = 0;i<X;i++){
+	 for(int j = 0;j<Y;j++){
+		 printf("%0.2f| ",gsl_matrix_get(M,i,j));
+		 }
+	  printf("\n");
+	 }
+*/

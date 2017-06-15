@@ -15,13 +15,13 @@
 #define QUASI_ZERO 1e-15
 
 typedef struct {
-	float *amplitude;// Amplitude do seno modulado para cada canal
-	float *phase_rad;// Fase do...
-	float *offset;// offset do ...
-	float *alpha;// 
-	float *beta;//
-	float *omegat;//
-	float *y;//
+	gsl_vector *amplitude;// Amplitude do seno modulado para cada canal
+	gsl_vector *phase_rad;// Fase do...
+	gsl_vector *offset;// offset do ...
+	gsl_vector *alpha;// 
+	gsl_vector *beta;//
+	gsl_vector *omegat;//
+	gsl_matrix *y;//
 }fitSine;
 
 /*Intern functions*/
