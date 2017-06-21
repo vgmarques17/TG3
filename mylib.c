@@ -4,7 +4,7 @@
 /*Intern Functions*/
 
 /*Extern Functions*/
-
+/*
 float *getFileCol(int n_lines,int n_cols, float matrix[n_lines][n_cols], int col){ //provisoria e errada
 	
 	if(col>=n_cols){
@@ -19,7 +19,7 @@ float *getFileCol(int n_lines,int n_cols, float matrix[n_lines][n_cols], int col
 	}
 	return vector;
 }
-
+*/
 void showTable_1Df(float* table, int Nrows, int Ncol){
 	int col=0;
 	for(int element=0;element<Nrows*Ncol;element++){
@@ -71,7 +71,7 @@ void saveData_1Df(float* Data, int Nrows, int Ncol){
 	
 }
 
-int pointer2gsl(gsl_matrix * gsl_M, float* M, int m, int n){
+int pointer2gsl_matrix(gsl_matrix * gsl_M, float* M, int m, int n){
 	double element;
 	for(int i = 0;i<m;i++){
 		for(int j = 0;j<n;j++){
@@ -94,6 +94,16 @@ int gsl_matrix2pointer(float* M, gsl_matrix* gsl_M){
 		}
 	}
 		
+	return 1;
+	}
+	
+int pointer2gsl_array(gsl_vector * gsl_vector, float* M){
+	int m = gsl_vector->size;
+	
+	for(int i=0;i<m;i++){
+		gsl_vector_set(gsl_vector,i,(double)M[i]);	
+	}
+	
 	return 1;
 	}
 	
@@ -322,6 +332,86 @@ fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq){
 	
 	return results;
 }
+
+
+gsl_matrix * reorganizaDados(gsl_matrix* Data,int samples_cicle, int channel,int phase){
+	
+	int N = Data->size1;
+	int n_cicles,k=0;
+	gsl_matrix * Data_out;
+	gsl_vector * copy_vector;
+	
+	
+	copy_vector = gsl_vector_alloc(samples_cicle);	
+	n_cicles = round(N/samples_cicle);	
+	Data_out = gsl_matrix_alloc(samples_cicle,n_cicles);
+
+	for(int i = phase;i<n_cicles;i=i+2){
+		
+		for(int j = 0;j<samples_cicle;j++){
+			gsl_vector_set(copy_vector,j,gsl_matrix_get(Data,j+i*samples_cicle,channel));
+		}
+		
+		gsl_matrix_set_col(Data_out,k,copy_vector);
+		k++;
+		gsl_vector_set_zero (copy_vector);
+	}
+		
+	
+	
+	return Data_out;
+}
+
+gsl_matrix * readFile_gsl(const char *filename, int m, int n, int header){
+	
+	gsl_matrix *Data_matrix = gsl_matrix_alloc(m,n);
+	gsl_vector *row_vector = gsl_vector_alloc(n);
+	float temp_val[n];
+	char line[128];
+		
+	FILE *file = fopen(filename,"r");
+	
+	
+	if(header==TRUE){
+		fgets(line,128,file);		
+	}
+		
+	
+	
+	switch(n){
+	case 4:
+		for(int i = 0;i<m;i++){
+			fgets(line,128,file);
+			sscanf(line, " %f ; %f ; %f ; %f ;", &temp_val[0], &temp_val[1], &temp_val[2], &temp_val[3]);
+			
+			pointer2gsl_array(row_vector,temp_val);
+			gsl_matrix_set_row(Data_matrix,i,row_vector);
+		}
+		
+	case 8:
+		for(int i = 0;i<m;i++){
+
+			fgets(line,128,file);
+			
+//			for(int j =0;j<k;j++){printf("%c",line[j]);}
+			
+			sscanf(line, " %9f ; %9f ; %9f ; %9f ; %9f ; %9f ; %9f ; %9f ;", &temp_val[0], &temp_val[1], &temp_val[2], &temp_val[3],
+																			&temp_val[4], &temp_val[5], &temp_val[6], &temp_val[7]);
+			pointer2gsl_array(row_vector,temp_val);			
+			gsl_matrix_set_row(Data_matrix,i,row_vector);
+		}
+		
+		
+	}
+	
+	fclose(file);
+	
+	return Data_matrix;
+}
+
+
+
+
 /* ycos(k,:) = beta.*cos(2*pi*f0*discrete_time(k));
    ysin(k,:) = alpha.*sin(2*pi*f0*discrete_time(k));
    y(k,:) = ysin(k,:) + ycos(k,:) + C; 
