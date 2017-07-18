@@ -39,8 +39,8 @@ int main(int argc, char **argv){
 	uint8_t ranges[8],MUX_door = TRUE, options; //armazena todos os intervalos de medição, porta onde está o MUX, opcoes de aquisicao
 	uint8_t channels = 0xff; // Canais a serem usados
 	
-	gsl_matrix *Data_Out;
-	fitSine regression_output;
+	gsl_matrix *Data_Out, *Impedance_Matrix;
+	
 
 	
 
@@ -136,7 +136,10 @@ int main(int argc, char **argv){
 	printf("Número de amostras coletadas em cada aplicacao: %i \n",samples_cicle);
 	printf("Tempo estimado de aquisicao [s]: %0.2f \n",acq_time);
 	
+	//Colocar confirmaçao do usuario
+	
 	/*Preparaçao da aquisiçao*/
+	
 	n_loops = N_samples/samples_cicle; //Número de repetições das medições
 	config_lookup_int(&cfg_params,"range",&range);
 	config_lookup_int(&cfg_params,"N_chan",&N_chan);
@@ -150,6 +153,8 @@ int main(int argc, char **argv){
 	uint16_t sdataIn[N_chan*samples_cicle]; //Reserva espaço para os dados de entrada
 	float sdataOut[N_chan*N_samples]; // Reserva espaço para os dados de saída
 	Data_Out = gsl_matrix_alloc(N_samples,N_chan); // Reserva espaço para os dados de saída em GSL
+	Impedance_Matrix = gsl_matrix_alloc(times_direction*2,N_chan*3); //Reserva espaço para dados de impedância
+	
 	
 	//Configura o modo de transferência dos dados para o pc
 	if (f_sampling < 100.) {
@@ -157,6 +162,7 @@ int main(int argc, char **argv){
 	} else {
 	  options = (BLOCK_TRANSFER_MODE | INTERNAL_PACER_ON);
 	}
+	
 	
 	/*Aquisiçao*/
 	printf("\nInício da Aquisiçao\n");
@@ -185,37 +191,15 @@ int main(int argc, char **argv){
 
 	
 	/*Espaço para demodulaçao*/
-	pointer2gsl(Data_Out,sdataOut,N_samples,N_chan);
+	pointer2gsl_matrix(Data_Out,sdataOut,N_samples,N_chan);
 	
-	/*gsl_matrix *data_cicle = gsl_matrix_alloc(samples_cicle,N_chan);
-	double value = 0;
-	for(int i = 0;i<samples_cicle;i++){
-		for(int j = 0;j<N_chan;j++){
-			value = gsl_matrix_get(Data_Out,i,j);
-			gsl_matrix_set(data_cicle,i,j,value);
-			}
-		}*/
-	
-	regression_output = sineRegression_lms(Data_Out,f_source,f_sampling);
-	
-	/*
-	printf("\nDados calculados [0]:\n");
-	printf("Amplitude: %f\n",gsl_vector_get(results.amplitude,0));
-	printf("Fase: %f\n",gsl_vector_get(results.phase_rad,0));
-	printf("offset: %f\n",gsl_vector_get(results.offset,0));
-	
-	printf("\nDados calculados [1]:\n");
-	printf("Amplitude: %f\n",gsl_vector_get(results.amplitude,1));
-	printf("Fase: %f\n",gsl_vector_get(results.phase_rad,1));
-	printf("offset: %f\n",gsl_vector_get(results.offset,1));*/
-
-	/*Mostrar tabela (temporário)*/
-	
-	//showTable_1Df(sdataOut,samples_cicle,N_chan);
-	
+	makeImpedanceTable(Data_Out,samples_cicle,Impedance_Matrix,f_source,f_sampling);
 
 	/*Salvar em arquivo .txt (usar funçao)*/
-	saveData_1Df(sdataOut,N_samples,N_chan);
+	//ver se usuario quer salvar
+	saveFile_gsl(cfg_params,Data_Out, 0);
+	saveFile_gsl(cfg_params,Impedance_Matrix, 1);
+
 	
 	config_destroy (&cfg_params);	
 
@@ -224,3 +208,13 @@ int main(int argc, char **argv){
 
 
 /*gcc -g -Wall -I. -o TG3_main TG3_main.c -L. Library/mylib.o -lmccusb -L/usr/local/lib -lhidapi-libusb -lusb-1.0 -lm -lgsl -lgslcblas -lconfig */
+
+
+	/*gsl_matrix *data_cicle = gsl_matrix_alloc(samples_cicle,N_chan);
+	double value = 0;
+	for(int i = 0;i<samples_cicle;i++){
+		for(int j = 0;j<N_chan;j++){
+			value = gsl_matrix_get(Data_Out,i,j);
+			gsl_matrix_set(data_cicle,i,j,value);
+			}
+		}*/

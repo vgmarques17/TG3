@@ -10,6 +10,7 @@
 #include <gsl/gsl_complex_math.h>
 #include <gsl/gsl_linalg.h>
 #include <gsl/gsl_matrix.h>
+#include <libconfig.h>
 
 #define PI 3.14159265 
 #define QUASI_ZERO 1e-15
@@ -55,11 +56,15 @@ extern int gsl_productMatrix(gsl_matrix *A, gsl_matrix *B, gsl_matrix * AB);// m
 
 extern int pinv(gsl_matrix *usr_matrix,gsl_matrix *P_inv); //pseudo inverse algorithm using SVD
 
-extern fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq); // fixed frequency sine regression, talvez n precise de k0
+extern fitSine sineRegression_lms(gsl_matrix* Data, float f0,float samp_freq); // fixed frequency sine regression
 
 extern gsl_matrix * reorganizaDados(gsl_matrix* Data,int samples_cicle, int channel, int phase); //pega somente as partes com sinal nas matrizes
 
-extern gsl_matrix * readFile_gsl(const char *filename, int m, int n, int header); //returns a gsl_matrix read from file (maybe can be done directly), no momento soh ignora o header, ideal seria ler tudo
+extern gsl_matrix * readFile_gsl(const char *filename, int m, int n, int header); //returns a gsl_matrix read from file (maybe can be done directly), 
+																				  //no momento soh ignora o header, ideal seria ler tudo
 
+extern gsl_matrix * makeImpedanceTable(gsl_matrix* Data, int samples_cicle, gsl_matrix * impedance_matrix, float f0, float fs); //makes impedance file
+
+extern int saveFile_gsl(config_t configuration, gsl_matrix * Data, int fileType);
 
 #endif

@@ -409,6 +409,102 @@ gsl_matrix * readFile_gsl(const char *filename, int m, int n, int header){
 	return Data_matrix;
 }
 
+gsl_matrix * makeImpedanceTable(gsl_matrix* Data, int samples_cicle, gsl_matrix * impedance_matrix, float f0, float fs) {
+	
+	/*The impedance matrix must be of size (samples_cicle) x (3* N_channels)
+	 * This routine will get impedance values and store them as complex numbers in polar form, 
+	 * amplitude and phase, with an offset*/
+	
+	int N_cicles = (Data->size1)/samples_cicle;
+	int N_channels = Data->size2;
+	gsl_matrix * temporary_matrix;
+	gsl_vector * temporary_vector;
+	fitSine partial_results;
+	
+	temporary_matrix = gsl_matrix_alloc(samples_cicle,N_channels);
+	temporary_vector = gsl_vector_alloc(N_channels);
+	
+	
+	for(int N=0;N<N_cicles;N++){
+		//Copy portion of matrix
+		for(int i = 0;i<samples_cicle;i++){
+			gsl_matrix_get_row(temporary_vector,Data,N*samples_cicle+i);
+			gsl_matrix_set_row(temporary_matrix,i,temporary_vector);		
+		}
+
+		partial_results = sineRegression_lms(temporary_matrix,f0,fs);
+
+			for(int k = 0;k<N_channels;k++){
+				gsl_matrix_set(impedance_matrix,N,3*k,gsl_vector_get(partial_results.amplitude,k));
+				gsl_matrix_set(impedance_matrix,N,3*k+1,gsl_vector_get(partial_results.phase_rad,k));
+				gsl_matrix_set(impedance_matrix,N,3*k+2,gsl_vector_get(partial_results.offset,k));
+			}			
+		
+		
+	}
+	
+	return 0;
+}
+
+int saveFile_gsl(config_t configuration, gsl_matrix * Data, int fileType){
+	FILE *data_file;
+	char *fname_data;
+	
+	
+	config_lookup_string(&configuration,"name",&fname_data);
+		
+	switch(fileType){
+		
+		case 0:
+		/*Apenas arquivo com dados base*/
+		strcat(fname_data,"_data.txt");	
+		data_file = fopen(fname_data,"w");
+		
+		for(int i=0;i<Data->size2;i++){
+			fprintf(data_file,"Channel_%d; ",i );		
+		}
+		fprintf(data_file,"\n");
+		for(int row=0;row<Data->size1;row++){
+			for(int col=0;col<Data->size2;col++){
+				fprintf(data_file," %lf ;",gsl_matrix_get(Data,row,col));
+			}
+			fprintf(data_file,"\n");
+		}
+		
+		fclose(data_file);
+		break;
+		
+		case 1:
+		/*Apenas arquivo com dados de impedancia*/
+		strcat(fname_data,"_impedance.txt");	
+		data_file = fopen(fname_data,"w");
+		
+		for(int i=0;i<Data->size2/3;i++){
+			fprintf(data_file,"CH_%d_A; ",i );	
+			fprintf(data_file,"CH_%d_Ph; ",i );	
+			fprintf(data_file,"CH_%d_off; ",i );		
+		}
+		
+		fprintf(data_file,"\n");
+		for(int row=0;row<Data->size1;row++){
+			for(int col=0;col<Data->size2;col++){
+				fprintf(data_file," %lf ;",gsl_matrix_get(Data,row,col));
+			}
+			fprintf(data_file,"\n");
+		}
+		
+		fclose(data_file);
+		break;
+	}	
+		
+	return 0;
+}
+	
+	
+
+
+
+
 
 
 
