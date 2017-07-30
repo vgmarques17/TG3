@@ -368,7 +368,7 @@ gsl_matrix * readFile_gsl(const char *filename, int m, int n, int header){
 	gsl_vector *row_vector = gsl_vector_alloc(n);
 	float temp_val[n];
 	char line[128];
-		
+	
 	FILE *file = fopen(filename,"r");
 	
 	
@@ -389,15 +389,15 @@ gsl_matrix * readFile_gsl(const char *filename, int m, int n, int header){
 		}
 		
 	case 8:
-		for(int i = 0;i<m;i++){
-
+		for(int i = 0;i<m;i++){	
 			fgets(line,128,file);
 			
 //			for(int j =0;j<k;j++){printf("%c",line[j]);}
 			
 			sscanf(line, " %9f ; %9f ; %9f ; %9f ; %9f ; %9f ; %9f ; %9f ;", &temp_val[0], &temp_val[1], &temp_val[2], &temp_val[3],
 																			&temp_val[4], &temp_val[5], &temp_val[6], &temp_val[7]);
-			pointer2gsl_array(row_vector,temp_val);			
+			pointer2gsl_array(row_vector,temp_val);	
+				
 			gsl_matrix_set_row(Data_matrix,i,row_vector);
 		}
 		
@@ -409,53 +409,140 @@ gsl_matrix * readFile_gsl(const char *filename, int m, int n, int header){
 	return Data_matrix;
 }
 
-gsl_matrix * makeImpedanceTable(gsl_matrix* Data, int samples_cicle, gsl_matrix * impedance_matrix, float f0, float fs) {
+Sys_Results  calculateImpedance(gsl_matrix* Data, int samples_cicle,gsl_matrix * electrode_pairing, float f0, float fs) {
 	
-	/*The impedance matrix must be of size (samples_cicle) x (3* N_channels)
-	 * This routine will get impedance values and store them as complex numbers in polar form, 
-	 * amplitude and phase, with an offset*/
+	/*This function gets the data and calculates the amplitude, phase and offset from all channels
+	 * It then obtains differential values for the electrode pairs specified in electrode_pairing and
+	 * stores resulting amplitude and phase in the phasor matrix. Impedance calculation can be performed
+	 * on the resulting matrix
+	 * 
+	 * Matrix Shapes:
+	 * - Data (number of samples, number of channels)
+	 * - electrode_pairing (number of channels/2, 2)
+	 * - phasor_matrix (number of cycles, number of channels /2*2)*/
 	
 	int N_cicles = (Data->size1)/samples_cicle;
 	int N_channels = Data->size2;
-	gsl_matrix * temporary_matrix;
-	gsl_vector * temporary_vector;
-	fitSine partial_results;
+	int a,b; //codigos dos eletrodos
+	gsl_matrix * ddp_matrix; //guarda diferen¢a entre os canais
+	gsl_vector * ddp_a, *ddp_b; //vetores auxiliares para calcular as diferen¢as
+	gsl_matrix * temp_demod_matrix, *demod_matrix; //utilizadas para guardar valores durante a demodulaçao
+	gsl_vector * temp_demod_vector; //utilizado para guardar valores durante a demodulaçao
+	gsl_matrix* phasor_matrix; //guarda valores dos fasores de corrente e ddp
+	gsl_matrix* impedance_matrix; // guarda valores calculados de impedância, em forma retangular
+	float temp_A, temp_P;
 	
-	temporary_matrix = gsl_matrix_alloc(samples_cicle,N_channels);
-	temporary_vector = gsl_vector_alloc(N_channels);
+	gsl_complex comp_1, comp_2, R_sent;
 	
+	fitSine partial_results; // utilizado durante as demodulaçoes
+	Sys_Results Output; // structure para retornar todas as matrizes
 	
+	//inicializa	
+	ddp_matrix = gsl_matrix_alloc(Data->size1,N_channels/2);
+	ddp_a = gsl_vector_alloc(Data->size1);
+	ddp_b = gsl_vector_alloc(Data->size1);
+	
+	temp_demod_matrix = gsl_matrix_alloc(samples_cicle,N_channels/2);
+	temp_demod_vector = gsl_vector_alloc(N_channels/2);
+	
+	demod_matrix = gsl_matrix_alloc(N_cicles,3*N_channels/2);
+	
+	/*comp_1 = gsl_complex_polar(0,0);
+	comp_2 = gsl_complex_polar(0,0);*/
+	R_sent = gsl_complex_polar(30,0);
+	phasor_matrix = gsl_matrix_alloc(N_cicles,N_channels);
+	
+	impedance_matrix = gsl_matrix_alloc(N_cicles/2,4); //L L T T *******
+	
+	//Diferen¢a dos canais
+	for(int i = 0;i<N_channels/2;i++){
+		gsl_matrix_get_col(ddp_a,Data,gsl_matrix_get(electrode_pairing,i,0));
+		gsl_matrix_get_col(ddp_b,Data,gsl_matrix_get(electrode_pairing,i,1)); 
+		
+		//a-b
+		gsl_vector_sub(ddp_a,ddp_b);
+		
+		gsl_matrix_set_col(ddp_matrix,i,ddp_a);		
+	}
+
+	//Demod	
 	for(int N=0;N<N_cicles;N++){
 		//Copy portion of matrix
 		for(int i = 0;i<samples_cicle;i++){
-			gsl_matrix_get_row(temporary_vector,Data,N*samples_cicle+i);
-			gsl_matrix_set_row(temporary_matrix,i,temporary_vector);		
+			gsl_matrix_get_row(temp_demod_vector,ddp_matrix,N*samples_cicle+i);
+			gsl_matrix_set_row(temp_demod_matrix,i,temp_demod_vector);		
 		}
-
-		partial_results = sineRegression_lms(temporary_matrix,f0,fs);
-
-			for(int k = 0;k<N_channels;k++){
-				gsl_matrix_set(impedance_matrix,N,3*k,gsl_vector_get(partial_results.amplitude,k));
-				gsl_matrix_set(impedance_matrix,N,3*k+1,gsl_vector_get(partial_results.phase_rad,k));
-				gsl_matrix_set(impedance_matrix,N,3*k+2,gsl_vector_get(partial_results.offset,k));
-			}			
 		
-		
+		partial_results = sineRegression_lms(temp_demod_matrix,f0,fs);
+			for(int k = 0;k<N_channels/3;k++){
+				gsl_matrix_set(demod_matrix,N,3*k,gsl_vector_get(partial_results.amplitude,k));
+				gsl_matrix_set(demod_matrix,N,3*k+1,gsl_vector_get(partial_results.phase_rad,k));
+				gsl_matrix_set(demod_matrix,N,3*k+2,gsl_vector_get(partial_results.offset,k));
+			}
+			//Fasor
+			//VL,VT,IL,IT
+			for(int k = 0;k<N_channels/2;k++){
+				if(k<1){					
+					gsl_matrix_set(phasor_matrix,N,2*k,gsl_vector_get(partial_results.amplitude,k));
+					gsl_matrix_set(phasor_matrix,N,2*k+1,gsl_vector_get(partial_results.phase_rad,k));
+				}else{
+					gsl_matrix_set(phasor_matrix,N,2*k,gsl_vector_get(partial_results.amplitude,k)/30);
+					gsl_matrix_set(phasor_matrix,N,2*k+1,gsl_vector_get(partial_results.phase_rad,k));
+				}
+			}	
+	}
+
+	//Impedância
+	int j = 0;
+	for(int i =0;i<N_cicles;i++){
+		if(i%2==0){
+			temp_A = gsl_matrix_get(phasor_matrix,j,2)/gsl_matrix_get(phasor_matrix,j,6);
+			temp_P = gsl_matrix_get(phasor_matrix,j,3)-gsl_matrix_get(phasor_matrix,j,7);// phase VL -phase IL	
+			
+			//Resistência			
+			gsl_matrix_set(impedance_matrix,j,2,temp_A);
+			// Reatância							
+			gsl_matrix_set(impedance_matrix,j,3,temp_P);						
+		}else{
+			temp_A = gsl_matrix_get(phasor_matrix,j,0)/gsl_matrix_get(phasor_matrix,j,4);
+			temp_P = gsl_matrix_get(phasor_matrix,j,1)-gsl_matrix_get(phasor_matrix,j,5);// phase VL -phase IL	
+			
+			//Resistência			
+			gsl_matrix_set(impedance_matrix,j,0,temp_A);
+			// Reatância							
+			gsl_matrix_set(impedance_matrix,j,1,temp_P);
+			j++;
+		}
 	}
 	
-	return 0;
+	// Organiza resultado final
+	
+	Output.data = Data;//
+	Output.demod_data = demod_matrix;
+	Output.phasor_data = phasor_matrix;
+	Output.impedance_data = impedance_matrix;
+
+	return Output;
 }
+
+
+
+
+
+
 
 int saveFile_gsl(config_t configuration, gsl_matrix * Data, int fileType){
 	FILE *data_file;
-	char *fname_data;
+	char *fname_data, fname_impedance[50], fname_phasor[50];
 	
-	
-	config_lookup_string(&configuration,"name",&fname_data);
+		config_lookup_string(&configuration,"name",&fname_data);
+		strcpy(fname_impedance,fname_data);
+		strcpy(fname_phasor,fname_data);
 		
 	switch(fileType){
 		
 		case 0:
+
 		/*Apenas arquivo com dados base*/
 		strcat(fname_data,"_data.txt");	
 		data_file = fopen(fname_data,"w");
@@ -476,14 +563,41 @@ int saveFile_gsl(config_t configuration, gsl_matrix * Data, int fileType){
 		
 		case 1:
 		/*Apenas arquivo com dados de impedancia*/
-		strcat(fname_data,"_impedance.txt");	
-		data_file = fopen(fname_data,"w");
+		strcat(fname_impedance,"_impedance.txt");	
+		data_file = fopen(fname_impedance,"w");
 		
-		for(int i=0;i<Data->size2/3;i++){
-			fprintf(data_file,"CH_%d_A; ",i );	
-			fprintf(data_file,"CH_%d_Ph; ",i );	
-			fprintf(data_file,"CH_%d_off; ",i );		
+		//Nao generalizado
+		fprintf(data_file,"RL; ");	
+		fprintf(data_file,"XL; ");			
+		fprintf(data_file,"RT; ");	
+		fprintf(data_file,"XT; ");			
+		
+		fprintf(data_file,"\n");
+		for(int row=0;row<Data->size1;row++){
+			for(int col=0;col<Data->size2;col++){
+				fprintf(data_file," %lf ;",gsl_matrix_get(Data,row,col));
+			}
+			fprintf(data_file,"\n");
 		}
+		
+		fclose(data_file);
+
+		break;
+		
+		case 2:
+		/*Apenas arquivo com dados de fasor*/
+		strcat(fname_phasor,"_phasors.txt");	
+		data_file = fopen(fname_phasor,"w");
+		
+		
+		fprintf(data_file,"VL_A; ");	
+		fprintf(data_file,"VL_Ph; ");	
+		fprintf(data_file,"VT_A; ");	
+		fprintf(data_file,"VT_Ph; ");	
+		fprintf(data_file,"IL_A; ");	
+		fprintf(data_file,"IL_Ph; ");		
+		fprintf(data_file,"IT_A; ");	
+		fprintf(data_file,"IT_Ph; ");
 		
 		fprintf(data_file,"\n");
 		for(int row=0;row<Data->size1;row++){
@@ -496,6 +610,7 @@ int saveFile_gsl(config_t configuration, gsl_matrix * Data, int fileType){
 		fclose(data_file);
 		break;
 	}	
+
 		
 	return 0;
 }

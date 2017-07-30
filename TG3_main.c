@@ -27,7 +27,6 @@ int main(int argc, char **argv){
 	
 	//Outras variáveis
 	config_t cfg_params;
-	config_setting_t *setting;
 	char cfg_file[100];
 	
 	double f_source, f_sampling,acq_time,T_s; //Frequência da fonte, frquência de amostragem, tempo de aquisição, periodo de aquisicao
@@ -39,8 +38,9 @@ int main(int argc, char **argv){
 	uint8_t ranges[8],MUX_door = TRUE, options; //armazena todos os intervalos de medição, porta onde está o MUX, opcoes de aquisicao
 	uint8_t channels = 0xff; // Canais a serem usados
 	
-	gsl_matrix *Data_Out, *Impedance_Matrix;
+	gsl_matrix *Data_Out,*electrode_pairing;
 	
+	Sys_Results Output;
 
 	
 
@@ -138,6 +138,7 @@ int main(int argc, char **argv){
 	
 	//Colocar confirmaçao do usuario
 	
+	
 	/*Preparaçao da aquisiçao*/
 	
 	n_loops = N_samples/samples_cicle; //Número de repetições das medições
@@ -153,7 +154,6 @@ int main(int argc, char **argv){
 	uint16_t sdataIn[N_chan*samples_cicle]; //Reserva espaço para os dados de entrada
 	float sdataOut[N_chan*N_samples]; // Reserva espaço para os dados de saída
 	Data_Out = gsl_matrix_alloc(N_samples,N_chan); // Reserva espaço para os dados de saída em GSL
-	Impedance_Matrix = gsl_matrix_alloc(times_direction*2,N_chan*3); //Reserva espaço para dados de impedância
 	
 	
 	//Configura o modo de transferência dos dados para o pc
@@ -188,17 +188,31 @@ int main(int argc, char **argv){
 		//4) Muda direção
 		MUX_door = !MUX_door;		
 	}
-
+	printf("\nFim da Aquisiçao\n");
+	
+	//matriz com pareamento dos eletrodos
+	// Duas primeiras linhas: DDP músculo (L,T)
+	// Duas últimas linhas: DDP sentinela (L,T)
+	
+	electrode_pairing = gsl_matrix_alloc(4,2);
+	
+	gsl_matrix_set(electrode_pairing,0,0,1); gsl_matrix_set(electrode_pairing,0,1,0); // [1 0] 
+	gsl_matrix_set(electrode_pairing,1,0,2); gsl_matrix_set(electrode_pairing,1,1,3); // [2 3]
+	gsl_matrix_set(electrode_pairing,2,0,4); gsl_matrix_set(electrode_pairing,2,1,5); // [4 5]
+	gsl_matrix_set(electrode_pairing,3,0,6); gsl_matrix_set(electrode_pairing,3,1,7); // [6 7]
+	
 	
 	/*Espaço para demodulaçao*/
 	pointer2gsl_matrix(Data_Out,sdataOut,N_samples,N_chan);
 	
-	makeImpedanceTable(Data_Out,samples_cicle,Impedance_Matrix,f_source,f_sampling);
+	Output = calculateImpedance(Data_Out,samples_cicle,electrode_pairing,f_source,f_sampling);
 
 	/*Salvar em arquivo .txt (usar funçao)*/
 	//ver se usuario quer salvar
-	saveFile_gsl(cfg_params,Data_Out, 0);
-	saveFile_gsl(cfg_params,Impedance_Matrix, 1);
+	
+	saveFile_gsl(cfg_params,Data_Out, 0);	
+	saveFile_gsl(cfg_params,Output.impedance_data, 1);
+	saveFile_gsl(cfg_params,Output.phasor_data, 2);
 
 	
 	config_destroy (&cfg_params);	
@@ -210,11 +224,3 @@ int main(int argc, char **argv){
 /*gcc -g -Wall -I. -o TG3_main TG3_main.c -L. Library/mylib.o -lmccusb -L/usr/local/lib -lhidapi-libusb -lusb-1.0 -lm -lgsl -lgslcblas -lconfig */
 
 
-	/*gsl_matrix *data_cicle = gsl_matrix_alloc(samples_cicle,N_chan);
-	double value = 0;
-	for(int i = 0;i<samples_cicle;i++){
-		for(int j = 0;j<N_chan;j++){
-			value = gsl_matrix_get(Data_Out,i,j);
-			gsl_matrix_set(data_cicle,i,j,value);
-			}
-		}*/

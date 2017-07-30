@@ -27,6 +27,13 @@ typedef struct {
 	gsl_matrix *y;//
 }fitSine;
 
+typedef struct {
+	gsl_matrix *data;//
+	gsl_matrix *demod_data;
+	gsl_matrix *phasor_data;
+	gsl_matrix *impedance_data;
+}Sys_Results;
+
 /*Intern functions*/
 
 
@@ -63,7 +70,7 @@ extern gsl_matrix * reorganizaDados(gsl_matrix* Data,int samples_cicle, int chan
 extern gsl_matrix * readFile_gsl(const char *filename, int m, int n, int header); //returns a gsl_matrix read from file (maybe can be done directly), 
 																				  //no momento soh ignora o header, ideal seria ler tudo
 
-extern gsl_matrix * makeImpedanceTable(gsl_matrix* Data, int samples_cicle, gsl_matrix * impedance_matrix, float f0, float fs); //makes impedance file
+extern Sys_Results  calculateImpedance(gsl_matrix* Data, int samples_cicle,gsl_matrix * electrode_pairing, float f0, float fs); //makes impedance file
 
 extern int saveFile_gsl(config_t configuration, gsl_matrix * Data, int fileType);
 
