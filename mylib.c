@@ -430,7 +430,7 @@ Sys_Results  calculateImpedance(gsl_matrix* Data, int samples_cicle,gsl_matrix *
 	gsl_vector * temp_demod_vector; //utilizado para guardar valores durante a demodulaçao
 	gsl_matrix* phasor_matrix; //guarda valores dos fasores de corrente e ddp
 	gsl_matrix* impedance_matrix; // guarda valores calculados de impedância, em forma retangular
-	float temp_A, temp_P;
+	double temp_A, temp_P;
 	
 	gsl_complex comp_1, comp_2, R_sent;
 	
@@ -482,7 +482,7 @@ Sys_Results  calculateImpedance(gsl_matrix* Data, int samples_cicle,gsl_matrix *
 			//Fasor
 			//VL,VT,IL,IT
 			for(int k = 0;k<N_channels/2;k++){
-				if(k<1){					
+				if(k<2){					
 					gsl_matrix_set(phasor_matrix,N,2*k,gsl_vector_get(partial_results.amplitude,k));
 					gsl_matrix_set(phasor_matrix,N,2*k+1,gsl_vector_get(partial_results.phase_rad,k));
 				}else{
@@ -491,30 +491,31 @@ Sys_Results  calculateImpedance(gsl_matrix* Data, int samples_cicle,gsl_matrix *
 				}
 			}	
 	}
-
-	//Impedância
 	int j = 0;
+	//Impedância
 	for(int i =0;i<N_cicles;i++){
-		if(i%2==0){
-			temp_A = gsl_matrix_get(phasor_matrix,j,2)/gsl_matrix_get(phasor_matrix,j,6);
-			temp_P = gsl_matrix_get(phasor_matrix,j,3)-gsl_matrix_get(phasor_matrix,j,7);// phase VL -phase IL	
+		
+		if(i%2<QUASI_ZERO){
+			// Primeiro
+			temp_A = gsl_matrix_get(phasor_matrix,i,2)/gsl_matrix_get(phasor_matrix,i,6);
+			temp_P = gsl_matrix_get(phasor_matrix,i,3)-gsl_matrix_get(phasor_matrix,i,7);// phase VT -phase IT	
 			
 			//Resistência			
-			gsl_matrix_set(impedance_matrix,j,2,temp_A);
+			gsl_matrix_set(impedance_matrix,i/2,2,temp_A*cos(temp_P));
 			// Reatância							
-			gsl_matrix_set(impedance_matrix,j,3,temp_P);						
+			gsl_matrix_set(impedance_matrix,i/2,3,temp_A*sin(temp_P));						
 		}else{
-			temp_A = gsl_matrix_get(phasor_matrix,j,0)/gsl_matrix_get(phasor_matrix,j,4);
-			temp_P = gsl_matrix_get(phasor_matrix,j,1)-gsl_matrix_get(phasor_matrix,j,5);// phase VL -phase IL	
+			// Segundo
+			temp_A = gsl_matrix_get(phasor_matrix,i,0)/gsl_matrix_get(phasor_matrix,i,4);
+			temp_P = gsl_matrix_get(phasor_matrix,i,1)-gsl_matrix_get(phasor_matrix,i,5);// phase VL -phase IL	
 			
 			//Resistência			
-			gsl_matrix_set(impedance_matrix,j,0,temp_A);
+			gsl_matrix_set(impedance_matrix,j,0,temp_A*cos(temp_P));
 			// Reatância							
-			gsl_matrix_set(impedance_matrix,j,1,temp_P);
+			gsl_matrix_set(impedance_matrix,j,1,temp_A*sin(temp_P));
 			j++;
 		}
 	}
-	
 	// Organiza resultado final
 	
 	Output.data = Data;//
@@ -533,11 +534,14 @@ Sys_Results  calculateImpedance(gsl_matrix* Data, int samples_cicle,gsl_matrix *
 
 int saveFile_gsl(config_t configuration, gsl_matrix * Data, int fileType){
 	FILE *data_file;
-	char *fname_data, fname_impedance[50], fname_phasor[50];
+	char *fname_data, fname_impedance[50], fname_phasor[50],*folder;
 	
+		folder = malloc (sizeof (char) * 10);
+		strcpy(folder,"MIE_Data/"); //Select folder where to save
 		config_lookup_string(&configuration,"name",&fname_data);
-		strcpy(fname_impedance,fname_data);
-		strcpy(fname_phasor,fname_data);
+		strcat(folder,fname_data);
+		strcpy(fname_impedance,folder);
+		strcpy(fname_phasor,folder);
 		
 	switch(fileType){
 		
