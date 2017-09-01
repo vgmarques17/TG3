@@ -27,20 +27,20 @@ int main(int argc, char **argv){
 	
 	//Outras variáveis
 	config_t cfg_params;
-	config_setting_t *setting;
 	char cfg_file[100];
 	
 	double f_source, f_sampling,acq_time,T_s; //Frequência da fonte, frquência de amostragem, tempo de aquisição, periodo de aquisicao
 	
-	int samples_cicle, N_samples,n_loops,range, cicles_app,times_direction,N_chan; /* # amostras por ciclo, # amostras total,
+	int samples_cicle, N_samples,n_loops,range, cicles_time,times_direction,N_chan; /* # amostras por ciclo, # amostras total,
 														* número de aquisições, #ciclos por dire¢ao, #numero de aplicacoes por direcao,
 														* Numero de canais */
 	int col = 0; //controle de loops
 	uint8_t ranges[8],MUX_door = TRUE, options; //armazena todos os intervalos de medição, porta onde está o MUX, opcoes de aquisicao
 	uint8_t channels = 0xff; // Canais a serem usados
 	
-	gsl_matrix *Data_Out;
-	fitSine regression_output;
+	gsl_matrix *Data_Out,*electrode_pairing;
+	
+	Sys_Results Output;
 
 	
 
@@ -86,8 +86,6 @@ int main(int argc, char **argv){
 	
 	/*Decision Tree para determinar tipo de configura¢ao*/
 
-	//Frequencia de amostragem
-
 	if(config_lookup_float(&cfg_params,"f_sampling",&f_sampling)==0.0){
 		//Configura¢ao usando periodo
 		config_lookup_float(&cfg_params,"T_s",&T_s);
@@ -98,31 +96,29 @@ int main(int argc, char **argv){
 		T_s = 1/f_sampling;
 	}
 	
-
 	config_lookup_float(&cfg_params,"f_source",&f_source); // frequencia da fonte
 		
 	if(config_lookup_float(&cfg_params,"acq_time",&acq_time) != 0){
 		
 		N_samples = acq_time*f_sampling;
-		config_lookup_int(&cfg_params,"cicles_app",&cicles_app); //Da erro se colocado direto no if
+		config_lookup_int(&cfg_params,"cicles_time",&cicles_time); //Da erro se colocado direto no if
 		
-		if(cicles_app == 0){
-			printf("ping\n");
+		if(cicles_time == 0){
 			//Configura¢æo com times_direction e acq_time
 			config_lookup_int(&cfg_params,"times_direction",&times_direction);
 			samples_cicle = (int)round(N_samples/times_direction);				
-			cicles_app = round(N_samples/(samples_cicle*2));
+			cicles_time = round(N_samples/(samples_cicle*2));
 		}else{
-			//Configura¢ao com cicles_app e acq_time
-			samples_cicle = round(N_samples/(cicles_app*2));
+			//Configura¢ao com cicles_time e acq_time
+			samples_cicle = round(N_samples/(cicles_time*2));
 			times_direction = round(N_samples/samples_cicle);
 		}
 	}else{
-		//Configura¢ao com cicles_app e times_direction
-		config_lookup_int(&cfg_params,"cicles_app",&cicles_app);
+		//Configura¢ao com cicles_time e times_direction
+		config_lookup_int(&cfg_params,"cicles_time",&cicles_time);
 		config_lookup_int(&cfg_params,"times_direction",&times_direction);
-		N_samples = times_direction*2*(cicles_app*f_sampling/f_source);
-		samples_cicle = round(N_samples/(cicles_app*2));
+		N_samples = times_direction*2*(cicles_time*f_sampling/f_source);
+		samples_cicle = round(N_samples/(cicles_time*2));
 		acq_time = N_samples*T_s;
 	}
 	/*colocar verifica¢øes para erros*/
@@ -135,12 +131,16 @@ int main(int argc, char **argv){
 	printf("Período de Amostragem [ms]: %0.2f \n",T_s*1000);
 	printf("Frequência da Fonte [Hz]: %0.2f \n",f_source);
 	printf("Número total de amostras: %i \n",N_samples);
-	printf("Ciclos da fonte para cada aplicacao em cada direcao: %i \n",cicles_app);
+	printf("Ciclos da fonte para cada aplicacao em cada direcao: %i \n",cicles_time);
 	printf("Números de aplicacoes em cada direcao: %i \n",times_direction);
 	printf("Número de amostras coletadas em cada aplicacao: %i \n",samples_cicle);
 	printf("Tempo estimado de aquisicao [s]: %0.2f \n",acq_time);
 	
+	//Colocar confirmaçao do usuario
+	
+	
 	/*Preparaçao da aquisiçao*/
+	
 	n_loops = N_samples/samples_cicle; //Número de repetições das medições
 	config_lookup_int(&cfg_params,"range",&range);
 	config_lookup_int(&cfg_params,"N_chan",&N_chan);
@@ -155,12 +155,14 @@ int main(int argc, char **argv){
 	float sdataOut[N_chan*N_samples]; // Reserva espaço para os dados de saída
 	Data_Out = gsl_matrix_alloc(N_samples,N_chan); // Reserva espaço para os dados de saída em GSL
 	
+	
 	//Configura o modo de transferência dos dados para o pc
 	if (f_sampling < 100.) {
 	  options = (IMMEDIATE_TRANSFER_MODE | INTERNAL_PACER_ON); //problema nessa opcao
 	} else {
 	  options = (BLOCK_TRANSFER_MODE | INTERNAL_PACER_ON);
 	}
+	
 	
 	/*Aquisiçao*/
 	printf("\nInício da Aquisiçao\n");
@@ -186,40 +188,34 @@ int main(int argc, char **argv){
 		//4) Muda direção
 		MUX_door = !MUX_door;		
 	}
-
+	printf("\nFim da Aquisiçao\n");
+	
+	//showTable_1Df(sdataOut,100,8);
+	
+	//matriz com pareamento dos eletrodos
+	// Duas primeiras linhas: DDP músculo (L,T)
+	// Duas últimas linhas: DDP sentinela (L,T)
+	
+	electrode_pairing = gsl_matrix_alloc(4,2);
+	
+	gsl_matrix_set(electrode_pairing,0,0,2); gsl_matrix_set(electrode_pairing,0,1,1); //  VL
+	gsl_matrix_set(electrode_pairing,1,0,0); gsl_matrix_set(electrode_pairing,1,1,3); //  VT
+	gsl_matrix_set(electrode_pairing,2,0,6); gsl_matrix_set(electrode_pairing,2,1,7); //  IL
+	gsl_matrix_set(electrode_pairing,3,0,4); gsl_matrix_set(electrode_pairing,3,1,5); //  IT
+	
 	
 	/*Espaço para demodulaçao*/
 	pointer2gsl_matrix(Data_Out,sdataOut,N_samples,N_chan);
 	
-	/*gsl_matrix *data_cicle = gsl_matrix_alloc(samples_cicle,N_chan);
-	double value = 0;
-	for(int i = 0;i<samples_cicle;i++){
-		for(int j = 0;j<N_chan;j++){
-			value = gsl_matrix_get(Data_Out,i,j);
-			gsl_matrix_set(data_cicle,i,j,value);
-			}
-		}*/
-	
-	regression_output = sineRegression_lms(Data_Out,f_source,f_sampling);
-	
-	/*
-	printf("\nDados calculados [0]:\n");
-	printf("Amplitude: %f\n",gsl_vector_get(results.amplitude,0));
-	printf("Fase: %f\n",gsl_vector_get(results.phase_rad,0));
-	printf("offset: %f\n",gsl_vector_get(results.offset,0));
-	
-	printf("\nDados calculados [1]:\n");
-	printf("Amplitude: %f\n",gsl_vector_get(results.amplitude,1));
-	printf("Fase: %f\n",gsl_vector_get(results.phase_rad,1));
-	printf("offset: %f\n",gsl_vector_get(results.offset,1));*/
-
-	/*Mostrar tabela (temporário)*/
-	
-	//showTable_1Df(sdataOut,samples_cicle,N_chan);
-	
+	Output = calculateImpedance(Data_Out,samples_cicle,electrode_pairing,f_source,f_sampling);
 
 	/*Salvar em arquivo .txt (usar funçao)*/
-	saveData_1Df(sdataOut,N_samples,N_chan);
+	//ver se usuario quer salvar
+	
+	saveFile_gsl(cfg_params,Data_Out, 0);	
+	saveFile_gsl(cfg_params,Output.impedance_data, 1);
+	saveFile_gsl(cfg_params,Output.phasor_data, 2);
+
 	
 	config_destroy (&cfg_params);	
 

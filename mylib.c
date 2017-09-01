@@ -548,8 +548,8 @@ int saveFile_gsl(config_t configuration, gsl_matrix * Data, int fileType){
 		case 0:
 
 		/*Apenas arquivo com dados base*/
-		strcat(fname_data,"_data.txt");	
-		data_file = fopen(fname_data,"w");
+		strcat(folder,"_data.txt");	
+		data_file = fopen(folder,"w");
 		
 		for(int i=0;i<Data->size2;i++){
 			fprintf(data_file,"Channel_%d; ",i );		
@@ -623,6 +623,21 @@ int saveFile_gsl(config_t configuration, gsl_matrix * Data, int fileType){
 
 
 
+
+
+
+
+/* ycos(k,:) = beta.*cos(2*pi*f0*discrete_time(k));
+   ysin(k,:) = alpha.*sin(2*pi*f0*discrete_time(k));
+   y(k,:) = ysin(k,:) + ycos(k,:) + C; 
+ * */
+/* 
+ for(int i = 0;i<X;i++){
+	 for(int j = 0;j<Y;j++){
+		 printf("%0.2f| ",gsl_matrix_get(M,i,j));
+		 }
+	  printf("\n");
+	 }
 
 
 
